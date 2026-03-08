@@ -1,0 +1,214 @@
+#!/usr/bin/env python3
+
+# Copyright (c) 2026 kexec404
+# Licensed under BSD 3-Clause License
+
+import re
+import subprocess
+import sys
+import os
+import time
+import argparse
+
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+RESET = "\033[0m"
+
+def clear_line():
+    sys.stdout.write('\033[F')  
+    sys.stdout.write('\033[K')  
+    sys.stdout.flush()
+
+def whoami():
+    whoami = subprocess.run(
+            ["whoami"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+    user = whoami.stdout.strip()
+    
+    if user != "root":
+        print(whoami)
+        raise OSError("are we deadass🥀, run with sudo/root")
+    else:
+        pass
+
+def find_content():
+    with open("/etc/nixos/configuration.nix", 'r') as file: content = file.read()
+    return content
+
+def find_package_section(content: str):
+    # find enviroment.systemPackages in cfg
+    pattern = r'(environment\.systemPackages\s*=\s*with\s+pkgs\s*;\s*\[)(.*?)(\])'
+    match = re.search(pattern, content, re.DOTALL)
+    if not match:
+        print("there's no enviroment.systemPackages! its user fault")
+        exit()
+    else:
+        middle = match.group(2)
+        lines = middle.replace('#', ' #').split('\n')
+        words = ' '.join([line.split('#')[0] for line in lines]).split()
+        return words
+        
+
+def add_packages(raw_pkgs: list, new_pkgs: str):
+    # are this need a explanation.
+    # checking are it lists
+    if not isinstance(new_pkgs, str):
+        print("new_pkgs is not str! its a developer fault")
+        exit()
+    elif not isinstance(raw_pkgs, list):
+        print("raw_pkgs is not list! its a developer fault")
+        exit()
+    else:
+        # add new package(s) to rawpkgs
+        new_pkgs =  new_pkgs.split()
+        current_pkgs = set(raw_pkgs + new_pkgs)
+        return ' '.join(current_pkgs)
+
+def substract_packages(raw_pkgs: list, pkgs_to_rm: list):
+    # are this need a explanation? yeah, THIS function removes package from list, function DOWN write in cfg and etc.
+    # checking are it lists
+    if not isinstance(raw_pkgs, list):
+        print("raw_pkgs is not list! its a developer fault")
+        exit()
+    elif not isinstance(pkgs_to_rm, list):
+        print("pkgs_to_rm is not list! its a developer fault")
+        exit()
+    else:
+        # remove new package(s) from rawpkgs
+        current_pkgs = set(raw_pkgs) - set(pkgs_to_rm)
+        return ' '.join(current_pkgs)
+
+
+def update_config(content: str, pkgs: str):
+    pattern = r'(environment\.systemPackages\s*=\s*with\s+pkgs\s*;\s*\[)(.*?)(\])'
+    match = re.search(pattern, content, re.DOTALL)
+    if not match:
+        print("section dont found! its user fault")
+        exit
+    
+    start_tag = match.group(1)  # beginning of section
+    end_tag = match.group(3)     # closing bracket
+    
+    # create new section with updated packages
+    new_section = f"{start_tag} {pkgs} {end_tag}"
+    
+    # rebuild config by replacing old section with new one
+    new_content = content[:match.start()] + new_section + content[match.end():]
+    return new_content
+
+def save_config(backup, content, filename="/etc/nixos/configuration.nix"):
+    # make backup
+    with open(filename + ".bak", "w") as f:
+        f.write(backup)
+    # write new config
+    with open(filename, "w") as f:
+        f.write(content)
+
+def rebuild():
+    print('nixos-rebuild is running...')
+    subprocess.run(
+        ['sudo', 'nixos-rebuild', 'switch'],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print("done. enjoy your new/removed package(s)")
+
+
+def package_exists(pkg_name):
+    which = subprocess.run(["which", "nix"], text=True, capture_output=True)
+    
+    try:
+        result = subprocess.run(
+            [which.stdout.strip(), "eval", f"nixpkgs#{pkg_name}", "--json"],
+            capture_output=True,
+            text=True,
+            check=False,  # не падать при ошибке
+            env={"NIX_CONFIG": "extra-experimental-features = nix-command flakes"}
+        )
+        return result.returncode == 0
+    except:
+        return False
+    
+
+def install_packages(pkg_list: list):
+    # are this need a explanition. 
+    whoami()
+    content = find_content()
+    pkgs_section = find_package_section(content)
+    new_pkgs = ' '.join(pkg_list)
+    for pkg in pkg_list:
+        print(f"finding {pkg}...", end="")
+        if not package_exists(pkg):
+            print(f'{RED}{pkg} is not exist in nixpkgs{RESET})')
+            exit()
+    new_pkgs = add_packages(pkgs_section, new_pkgs)
+    if input(f"\n\nyou have to {GREEN}INSTALL{RESET}\n" + ', '.join(pkg_list) +"\nready?(y/n): ") != 'n':
+        new_config = update_config(content, new_pkgs)
+        save_config(content, new_config)
+        rebuild()
+    else:
+        exit
+
+def remove_packages(pkg_list: list):
+    # are this need a explanition. check substract_packages() comment.
+    whoami()
+    content = find_content()
+    pkgs_section = find_package_section(content)
+    pkgs_str = ' '.join(pkg_list)
+    new_pkgs = substract_packages(pkgs_section, pkg_list)
+    if input(f"\n\nyou have to {RED}REMOVE{RESET}\n" + ', '.join(pkg_list) +"\nready?(y/n): ") != 'n':
+        new_config = update_config(content, new_pkgs)
+        save_config(content, new_config)
+        rebuild()
+    else:
+        exit
+
+def list_packages():
+    content = find_content()
+    pkgs_section = find_package_section(content)
+    print("installed packages:\n" + ', '.join(pkgs_section))
+    
+def search_packages(pkg_list: str):
+    for pkg in pkg_list:
+        print(f"finding {pkg}...")
+        if not package_exists(pkg):
+            clear_line()
+            print(f'{RED}{pkg} is not exist in nixpkgs{RESET}')
+            time.sleep(0.25)
+        else:
+            clear_line()
+            print(f'{GREEN}{pkg} exist in nixpkgs{RESET}')
+            time.sleep(0.25)
+    
+def main():
+    parser = argparse.ArgumentParser(description="NixOS package manager")
+    
+    parser.add_argument("command", 
+                        choices=["install", "remove", "list", "search"],
+                        help="Command to execute: install packages, remove packages, list installed packages, search in nixpkgs")
+    
+    parser.add_argument("packages", 
+                        nargs="*", 
+                        help="packages to install/remove (space-separated)")
+    
+    args = parser.parse_args()
+    
+    if args.command == "install":
+        install_packages(args.packages)
+    elif args.command == "remove":
+        remove_packages(args.packages)
+    elif args.command == "list":
+        list_packages()
+    elif args.command == "search":
+        search_packages(args.packages)
+    
+if __name__ == "__main__":
+    main()
