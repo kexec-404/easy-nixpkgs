@@ -8,6 +8,9 @@ A simple CLI package installer from nixpkgs, without delving into configuration.
 - **list** installed packages
 - **search** in nixpkgs
 - **auto-backup** before changes
+## Install
+```bash
+nix-env -f default.nix -i```
 
 ## Usage
 ```bash
