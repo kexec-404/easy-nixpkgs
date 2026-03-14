@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2026 kexec404
-# Licensed under BSD 3-Clause License
+# Licensed under Mozilla Public License Version 2.0
 
 import re
 import subprocess
