@@ -10,8 +10,8 @@ A simple CLI package installer from nixpkgs, without delving into configuration.
 - **auto-backup** before changes
 ## Install
 ```bash
-nix-env -f default.nix -i```
-
+nix-env -f default.nix -i
+```
 ## Usage
 ```bash
 # install packages
@@ -25,3 +25,4 @@ nixpkgs list
 
 # search for packages in nixpkgs
 nixpkgs search python
+```
